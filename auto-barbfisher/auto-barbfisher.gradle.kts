@@ -1,7 +1,8 @@
 version = "0.0.1"
 
-project.extra["PluginName"] = "mAuto Switcher"
-project.extra["PluginDescription"] = "Auto switch gear by pressing hot key"
+project.extra["PluginName"] = "Auto Barb Fisher"
+project.extra["PluginDescription"] = "Automates 3T Barbarian Fishing"
+project.extra["PluginProvider"] = "Basilisk"
 
 tasks {
     jar {
