@@ -13,16 +13,16 @@ plugins {
     kotlin("jvm") version "1.6.21"
 }
 
-project.extra["GithubUrl"] = "https://github.com/melxin/devious-plugins-extended"
-project.extra["GithubUserName"] = "melxin"
-project.extra["GithubRepoName"] = "devious-plugins-extended"
+project.extra["GithubUrl"] = "https://github.com/BasiliskPlugins/plugins-source"
+project.extra["GithubUserName"] = "BasiliskPlugins"
+project.extra["GithubRepoName"] = "plugins-source"
 
 apply<BootstrapPlugin>()
 
 allprojects {
     group = "net.unethicalite"
 
-    project.extra["PluginProvider"] = "melxin"
+    project.extra["PluginProvider"] = "Basilisk"
     project.extra["ProjectSupportUrl"] = ""
     project.extra["PluginLicense"] = "3-Clause BSD License"
 
