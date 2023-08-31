@@ -26,7 +26,7 @@
 rootProject.name = "plugins-source"
 
 include("auto-barbfisher")
-
+include("auto-swapper")
 
 for (project in rootProject.children) {
     project.apply {

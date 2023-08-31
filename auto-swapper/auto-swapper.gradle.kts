@@ -1,7 +1,8 @@
 version = "0.0.1"
 
-project.extra["PluginName"] = "Unethical Logout"
-project.extra["PluginDescription"] = "Logs you out if a pker is near"
+project.extra["PluginName"] = "Auto Swapper"
+project.extra["PluginDescription"] = "Automatically switches a gear set of your choice."
+project.extra["PluginProvider"] = "Basilisk"
 
 tasks {
     jar {
