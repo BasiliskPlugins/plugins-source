@@ -1,7 +1,7 @@
 package net.autobarbfisher;
 
 public enum FishingState {
-    UseGuam,
+    SkipGameTick,
     UseTarAndDrop,
     ClickFishingSpot,
     LocatingFishingSpot,

@@ -25,7 +25,6 @@ import java.util.List;
 import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.function.BooleanSupplier;
 
 @Extension
 @PluginDescriptor(
@@ -75,7 +74,7 @@ public class AutoBarbFisher extends Plugin {
     public void onGameTick(GameTick gameTick) {
         if (!inProgress) {
             switch (state) {
-                case UseGuam:
+                case SkipGameTick:
                     AutoBarbFisherOverlayHelper.currentState = "Fishing..";
                     executor.submit(this::skipTick);
                     break;
@@ -85,14 +84,14 @@ public class AutoBarbFisher extends Plugin {
                     break;
                 case ClickFishingSpot:
                 case Idle:
-                    AutoBarbFisherOverlayHelper.currentState = "Fishing..";
+                    AutoBarbFisherOverlayHelper.currentState = "Idling..";
                     executor.submit(this::clickFishingSpot);
                     break;
                 case LocatingFishingSpot:
                     AutoBarbFisherOverlayHelper.currentState = "Locating fishing spot..";
                     break;
                 default:
-                    notifier.notify("ThreeTickBarb stopped unexpectedly!");
+                    notifier.notify("Auto barb fisher stopped unexpectedly!");
                     break;
             }
         }
@@ -170,7 +169,7 @@ public class AutoBarbFisher extends Plugin {
         }
 
         fishingSpot.interact("Use-rod");
-        state = FishingState.UseGuam;
+        state = FishingState.SkipGameTick;
 
         inProgress = false;
     }
@@ -181,7 +180,7 @@ public class AutoBarbFisher extends Plugin {
         fishingSpot.interact("Use-rod");
         waitUntilArrivedAtFishingSpot(fishingSpot);
 
-        state = FishingState.UseGuam;
+        state = FishingState.SkipGameTick;
 
         inProgress = false;
     }
