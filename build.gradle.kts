@@ -67,6 +67,17 @@ allprojects {
             fileMode = 420
         }
 
+        withType<Jar> {
+            doLast {
+                copy {
+                    from("./build/libs/")
+                    into("/home/dan/.openosrs/plugins")
+                    exclude("devious-plugins.jar")
+                    exclude("plugins-source.jar")
+                }
+            }
+        }
+
         compileKotlin {
             kotlinOptions.jvmTarget = "11"
         }
