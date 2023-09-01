@@ -28,14 +28,7 @@ public class AutoWinesOverlay extends OverlayPanel {
     public Dimension render(Graphics2D graphics) {
         try {
             long timeElapsed = System.currentTimeMillis() - timeBegan;
-            xpGained = client.getSkillExperience(Skill.COOKING) - AutoWinesOverlayHelper.expstarted;
 
-            int xpPerHour = (int) (xpGained / ((System.currentTimeMillis() - timeBegan) / 3600000.0D));
-            AutoWinesOverlayHelper.nextLevelXp = AutoWinesOverlayHelper.XP_TABLE[client.getRealSkillLevel(Skill.COOKING) + 1];
-            AutoWinesOverlayHelper.xpTillNextLevel = AutoWinesOverlayHelper.nextLevelXp - client.getSkillExperience(Skill.COOKING);
-            if (xpGained >= 1) {
-                AutoWinesOverlayHelper.timeTNL = (long) ((xpTillNextLevel / xpPerHour) * 3600000);
-            }
             panelComponent.setPreferredSize(new Dimension(275, 800));
             panelComponent.getChildren().add(TitleComponent.builder()
                     .text("Auto Wines")
@@ -45,13 +38,7 @@ public class AutoWinesOverlay extends OverlayPanel {
                     .left("Time Ran: " + ft(timeElapsed))
                     .build());
             panelComponent.getChildren().add(LineComponent.builder()
-                    .left("Fishing Exp Gained (hr): " + (xpGained) + " (" + xpPerHour + ")")
-                    .build());
-            panelComponent.getChildren().add(LineComponent.builder()
-                    .left("Fishing Levels Gained: " + (client.getRealSkillLevel(Skill.COOKING) - startinglevel))
-                    .build());
-            panelComponent.getChildren().add(LineComponent.builder()
-                    .left("Time till next level: " + ft(timeTNL))
+                    .left("Wines made: " + wineAmount)
                     .build());
             panelComponent.getChildren().add(LineComponent.builder()
                     .left("Current State: " + currentState)
