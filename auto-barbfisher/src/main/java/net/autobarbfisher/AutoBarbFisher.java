@@ -76,15 +76,22 @@ public class AutoBarbFisher extends Plugin {
             switch (state) {
                 case SkipGameTick:
                     AutoBarbFisherOverlayHelper.currentState = "Fishing..";
+
                     executor.submit(this::skipTick);
                     break;
                 case UseTarAndDrop:
                     AutoBarbFisherOverlayHelper.currentState = "Fishing..";
+
+                    Time.sleep(72, 184);
+
                     executor.submit(this::useTarAndDropFish);
                     break;
                 case ClickFishingSpot:
                 case Idle:
                     AutoBarbFisherOverlayHelper.currentState = "Idling..";
+
+                    Time.sleep(32, 134);
+
                     executor.submit(this::clickFishingSpot);
                     break;
                 case LocatingFishingSpot:
@@ -192,6 +199,7 @@ public class AutoBarbFisher extends Plugin {
 
     private int random(final int min, final int max) {
         final int n = Math.abs(max - min);
+
         return Math.min(min, max) + (n == 0 ? 0 : new java.util.Random().nextInt(n));
     }
 
