@@ -41,7 +41,6 @@ public class AutoFlicker extends Plugin {
     }
 
     private void dispatchPrayerToggle() {
-        System.out.println("Toggling..");
         Prayers.toggleQuickPrayer(false);
         Time.sleep(43, 89);
         Prayers.toggleQuickPrayer(true);
@@ -53,6 +52,4 @@ public class AutoFlicker extends Plugin {
 
         super.shutDown();
     }
-
-
 }
