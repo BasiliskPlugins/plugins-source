@@ -1,56 +1,51 @@
 package net.autowines;
 
 import com.google.inject.Inject;
-import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
+import net.autowines.loadout.ActionDelayHelper;
 import net.autowines.overlay.AutoWinesOverlay;
 import net.autowines.overlay.AutoWinesOverlayHelper;
 import net.runelite.api.*;
-import net.runelite.client.Notifier;
-import net.runelite.client.config.ConfigManager;
+import net.runelite.api.events.ItemContainerChanged;
+import net.runelite.api.widgets.Widget;
+import net.runelite.api.widgets.WidgetInfo;
+import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.unethicalite.api.commons.Time;
-import net.unethicalite.api.entities.NPCs;
 import net.unethicalite.api.entities.Players;
-import net.unethicalite.api.entities.TileObjects;
+import net.unethicalite.api.input.Keyboard;
 import net.unethicalite.api.items.Bank;
 import net.unethicalite.api.items.Inventory;
-import net.unethicalite.api.movement.Movement;
-import net.unethicalite.api.movement.pathfinder.model.BankLocation;
-import net.unethicalite.api.plugins.LoopedPlugin;
-import net.unethicalite.api.widgets.Dialog;
+import net.unethicalite.api.plugins.Script;
 import net.unethicalite.api.widgets.Widgets;
 import org.pf4j.Extension;
 
-@Extension
+import java.util.Map;
+
+@Slf4j
 @PluginDescriptor(
         name = "Auto Wines",
-        description = "Automates Wine Fermentation",
+        description = "Automates wine making",
         enabledByDefault = false
 )
-@Slf4j
-public class AutoWines extends LoopedPlugin {
-
+@Extension
+public class AutoWines extends Script {
     @Inject
     private Client client;
-    @Inject
-    private Notifier notifier;
-
     @Inject
     private OverlayManager overlayManager;
     @Inject
     private AutoWinesOverlay autoWinesOverlay;
+    private int winesMade;
 
-    private int winesMade = 0;
-
-    @Provides
-    private AutoWinesConfig provideConfig(ConfigManager configManager) {
-        return configManager.getConfig(AutoWinesConfig.class);
+    @Override
+    public void onStart(String... strings) {
+        WineTracker.onItemContainerChanged(null);
     }
 
     @Override
-    protected void startUp() throws Exception {
+    protected void startUp() {
         if (client.getGameState() == GameState.LOGGED_IN) {
             AutoWinesOverlayHelper.expstarted = client.getSkillExperience(Skill.COOKING);
             AutoWinesOverlayHelper.startinglevel = client.getRealSkillLevel(Skill.COOKING);
@@ -62,124 +57,85 @@ public class AutoWines extends LoopedPlugin {
     }
 
     @Override
-    protected void shutDown() throws Exception {
-        overlayManager.remove(autoWinesOverlay);
+    protected int loop() {
+        if (!fermentWine()) {
+            return withdrawIngredients();
+        }
+
+        return ActionDelayHelper.shortReturn();
+    }
+
+    private int withdrawIngredients() {
+        AutoWinesOverlayHelper.currentState = "Banking..";
+
+        InventoryLoadout invyLoadout = new InventoryLoadout();
+        invyLoadout.addItem(ItemID.GRAPES, 14);
+        invyLoadout.addItem(ItemID.JUG_OF_WATER, 14);
+        if (invyLoadout.fulfilled() && Bank.isOpen()) {
+            Bank.close();
+            return -1;
+        }
+
+        invyLoadout.fulfill();
+
+        return ActionDelayHelper.shortReturn();
+    }
+
+    private Widget getMultiSkillMenu() {
+        return Widgets.get(WidgetInfo.MULTI_SKILL_MENU);
+    }
+
+    private boolean isMultiSkillMenuOpen() {
+        Widget w = getMultiSkillMenu();
+
+        return w != null && w.isVisible();
+    }
+
+    private boolean fermentWine() {
+        AutoWinesOverlayHelper.currentState = "Making wines..";
+
+        Item grapes = Inventory.getFirst(ItemID.GRAPES);
+        Item jugs = Inventory.getFirst(ItemID.JUG_OF_WATER);
+        if (grapes == null || jugs == null) {
+            return false;
+        }
+        if (isMultiSkillMenuOpen()) {
+            Keyboard.type(" ");
+
+            return !Time.sleepUntil(() ->
+                    !Inventory.contains(ItemID.GRAPES, ItemID.JUG_OF_WATER),
+                    () -> Players.getLocal().isAnimating(),
+                    100,
+                    4000);
+        }
+
+        grapes.useOn(jugs);
+
+        Time.sleepUntil(this::isMultiSkillMenuOpen, 100, 3000);
+
+        return true;
+    }
+
+    @Subscribe
+    public void onItemContainerChanged(ItemContainerChanged event) {
+        for (Map.Entry<Integer, Integer> i : WineTracker.onItemContainerChanged(event).entrySet()) {
+            int id = i.getKey();
+
+            if (id == ItemID.GRAPES && !Bank.isOpen()) {
+                winesMade++;
+
+                AutoWinesOverlayHelper.wineAmount = winesMade;
+            }
+        }
     }
 
     @Override
-    protected int loop() {
-        AutoWinesOverlayHelper.currentState = "Locating bank..";
-        findBank();
+    protected void shutDown() throws Exception {
+        overlayManager.remove(autoWinesOverlay);
 
-        AutoWinesOverlayHelper.currentState = "Withdrawing..";
-        withdrawIngredients();
+        winesMade = 0;
+        AutoWinesOverlayHelper.wineAmount = 0;
 
-        AutoWinesOverlayHelper.currentState = "Fermenting..";
-        fermentWine();
-
-        AutoWinesOverlayHelper.currentState = "Banking wines..";
-        bankWines();
-
-        winesMade += 14;
-        AutoWinesOverlayHelper.wineAmount = winesMade;
-
-        return 1000;
-    }
-
-    private void bankWines() {
-        findBank();
-
-        Bank.depositInventory();
-    }
-
-    private void fermentWine() {
-        Item grape = Inventory.getFirst("Grapes");
-        Item jugOfWater = Inventory.getFirst("Jug of water");
-
-        grape.useOn(jugOfWater);
-
-        Time.sleepUntil(Dialog::isOpen, () -> !Dialog.isOpen(), 1000, 7000);
-
-        while (Dialog.isOpen()) {
-            if (Widgets.isVisible(client.getWidget(270, 14))) {
-                Dialog.continueSpace();
-
-                Time.sleep(2000, 3000);
-            }
-        }
-
-        Time.sleepUntil(this::hasFinishedUnfermentedWines, () -> Players.getLocal().isAnimating(), 100, 4000);
-    }
-
-    private void withdrawIngredients() {
-        if (Bank.getFreeSlots() == 0) {
-            notifier.notify("Free up some space before starting! Stopping script..");
-
-            this.stop();
-        }
-        if (!hasRequiredItems()) {
-            notifier.notify("You don't have any grapes or jugs of water! Stopping script..");
-
-            this.stop();
-        }
-
-        if (!Inventory.isEmpty()) {
-            Bank.depositInventory();
-
-            Time.sleep(100, 230);
-        }
-
-        Bank.withdraw("Grapes", 14, Bank.WithdrawMode.ITEM);
-        Bank.withdraw("Jug of water", 14, Bank.WithdrawMode.ITEM);
-
-        Time.sleep(134, 323);
-
-        if (hasGrapes() && hasJugsOfWater()) {
-            Bank.close();
-
-            Time.sleep(76, 200);
-        }
-
-        Time.sleepUntil(() -> !Bank.isOpen(), 1000);
-    }
-
-    private void findBank() {
-        while (BankLocation.getNearest().getArea().distanceTo(Players.getLocal().getWorldLocation()) > 3) {
-            Movement.walkTo(BankLocation.getNearest().getArea());
-
-            Time.sleep(1200);
-        }
-
-        if (BankLocation.getNearest().getArea().distanceTo(Players.getLocal().getWorldLocation()) <= 3) {
-            while (!Bank.isOpen()) {
-                if (NPCs.getNearest("Banker") != null) {
-                    NPCs.getNearest("Banker").interact("Bank");
-
-                    Time.sleep(120, 234);
-                } else if (TileObjects.getNearest("Bank booth") != null) {
-                    TileObjects.getNearest("Bank booth").interact("Bank");
-
-                    Time.sleep(120, 234);
-                }
-            }
-        }
-
-        Time.sleepUntil(Bank::isOpen, () -> !Bank.isOpen(), 100, 7000);
-    }
-
-    private boolean hasRequiredItems() {
-        return Bank.contains("Grapes") && Bank.contains("Jug of water");
-    }
-
-    private boolean hasGrapes() {
-        return Inventory.contains("Grapes") && Inventory.getCount("Grapes") == 14;
-    }
-
-    private boolean hasJugsOfWater() {
-        return Inventory.contains("Jug of water") && Inventory.getCount("Grapes") == 14;
-    }
-
-    private boolean hasFinishedUnfermentedWines() {
-        return Inventory.getCount("Unfermented wine") == 14;
+        super.shutDown();
     }
 }
