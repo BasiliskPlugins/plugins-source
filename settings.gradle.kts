@@ -29,6 +29,7 @@ include("auto-barbfisher")
 include("auto-swapper")
 include("auto-wines")
 include("auto-flicker")
+include("auto-pumper")
 
 for (project in rootProject.children) {
     project.apply {
