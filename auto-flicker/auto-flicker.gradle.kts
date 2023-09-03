@@ -1,4 +1,4 @@
-version = "0.0.1"
+version = "0.0.2"
 
 project.extra["PluginName"] = "Auto Flicker"
 project.extra["PluginDescription"] = "Automatically flicks your quick prayers!"
