@@ -1,11 +1,17 @@
 package net.autoflicker;
 
+import com.google.inject.Inject;
+import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.Client;
+import net.runelite.api.GameState;
 import net.runelite.api.events.GameTick;
-import net.runelite.api.widgets.WidgetID;
+import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.input.KeyManager;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.util.HotkeyListener;
 import net.unethicalite.api.commons.Time;
 import net.unethicalite.api.widgets.Prayers;
 import org.pf4j.Extension;
@@ -22,20 +28,40 @@ import java.util.concurrent.Executors;
 @Slf4j
 public class AutoFlicker extends Plugin {
 
-    private boolean pluginEnabled;
+    @Inject
+    private Client client;
+    @Inject
+    private KeyManager keyManager;
+    @Inject
+    private AutoFlickerConfig autoFlickerConfig;
 
+    @Provides
+    AutoFlickerConfig getConfig(ConfigManager configManager) {
+        return configManager.getConfig(AutoFlickerConfig.class);
+    }
+
+    private boolean hotKeyToggled;
     private final ExecutorService executor = Executors.newFixedThreadPool(1);
+
+    private final HotkeyListener keyBinding = new HotkeyListener(() -> autoFlickerConfig.keyBinding()) {
+        @Override
+        public void hotkeyPressed() {
+            hotKeyToggled = !hotKeyToggled;
+        }
+    };
 
     @Override
     protected void startUp() throws Exception {
-        pluginEnabled = true;
+        if (client.getGameState() == GameState.LOGGED_IN) {
+            keyManager.registerKeyListener(keyBinding);
 
-        super.startUp();
+            super.startUp();
+        }
     }
 
     @Subscribe
     public void onGameTick(GameTick gameTick) {
-        if (pluginEnabled) {
+        if (hotKeyToggled) {
             executor.submit(this::dispatchPrayerToggle);
         }
     }
@@ -48,7 +74,8 @@ public class AutoFlicker extends Plugin {
 
     @Override
     protected void shutDown() throws Exception {
-        pluginEnabled = false;
+        hotKeyToggled = false;
+        keyManager.unregisterKeyListener(keyBinding);
 
         super.shutDown();
     }
