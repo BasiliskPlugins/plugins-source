@@ -1,17 +1,25 @@
 package net.autopumper;
 
 import com.google.inject.Inject;
+import com.google.inject.Provides;
 import lombok.extern.slf4j.Slf4j;
+import net.autopumper.overlay.AutoPumperOverlay;
+import net.autopumper.overlay.AutoPumperOverlayHelper;
 import net.runelite.api.*;
 import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.events.AnimationChanged;
 import net.runelite.api.events.GameTick;
+import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.ui.overlay.OverlayManager;
 import net.unethicalite.api.commons.Time;
 import net.unethicalite.api.entities.Players;
+import net.unethicalite.api.entities.TileItems;
 import net.unethicalite.api.entities.TileObjects;
+import net.unethicalite.api.items.Inventory;
+import net.unethicalite.api.movement.Movement;
 import net.unethicalite.api.movement.Reachable;
 import org.pf4j.Extension;
 
@@ -35,6 +43,12 @@ public class AutoPumper extends Plugin {
 
     @Inject
     private Client client;
+    @Inject
+    private AutoPumperConfig autoPumperConfig;
+    @Inject
+    private OverlayManager overlayManager;
+    @Inject
+    private AutoPumperOverlay autoPumperOverlay;
 
     private Instant lastAnimating = Instant.now();
     private int lastAnimation = 0;
@@ -42,7 +56,28 @@ public class AutoPumper extends Plugin {
     private Instant lastInteracting;
     private Actor lastInteract;
 
+    private boolean isEnabled;
+
     private final ExecutorService executor = Executors.newFixedThreadPool(1);
+
+    @Provides
+    AutoPumperConfig getConfig(ConfigManager configManager) {
+        return configManager.getConfig(AutoPumperConfig.class);
+    }
+
+    @Override
+    protected void startUp() throws Exception {
+        isEnabled = true;
+
+        if (client.getGameState() == GameState.LOGGED_IN) {
+            AutoPumperOverlayHelper.timeBegan = System.currentTimeMillis();
+            if (overlayManager != null) {
+                overlayManager.add(autoPumperOverlay);
+            }
+
+            super.startUp();
+        }
+    }
 
     @Subscribe
     public void onAnimationChanged(AnimationChanged event) {
@@ -74,6 +109,10 @@ public class AutoPumper extends Plugin {
 
     @Subscribe
     public void onGameTick(GameTick event) {
+        if (!isEnabled) {
+            return;
+        }
+
         final Player local = client.getLocalPlayer();
         if (client.getGameState() != GameState.LOGGED_IN || local == null) {
             resetTimers();
@@ -86,7 +125,18 @@ public class AutoPumper extends Plugin {
         }
 
         if (isIdling(local)) {
-            executor.submit(() -> operatePump(local));
+            AutoPumperOverlayHelper.currentState = "Idling..";
+
+            if (autoPumperConfig.soloPump()) {
+                executor.submit(() -> {
+                    refuel(local);
+                    Time.sleep(32, 98);
+
+                    operatePump(local);
+                });
+            } else {
+                executor.submit(() -> operatePump(local));
+            }
         }
     }
 
@@ -130,7 +180,85 @@ public class AutoPumper extends Plugin {
         }
     }
 
+    private void refuel(Player local) {
+        if (Inventory.getCount("Spade") < 10) {
+            collectSpades(local);
+        } else {
+            fillSpades(local);
+        }
+
+        if (Inventory.getCount("Spade") == 10) {
+            fillSpades(local);
+        }
+
+        if (Inventory.getCount("Spadeful of coke") == 10) {
+            refuelStove();
+        }
+    }
+
+    private void refuelStove() {
+        AutoPumperOverlayHelper.currentState = "Refuelling.";
+
+        TileObject stove = TileObjects.getNearest("Stove");
+        if (stove == null) {
+            return;
+        }
+
+        while (Inventory.getCount("Spade") != 10 && isEnabled) {
+            stove.interact("Refuel");
+            waitUntilArrivedAt(stove);
+
+            Time.sleepTick();
+            Time.sleep(21, 112);
+        }
+    }
+
+    private void collectSpades(Player local) {
+        AutoPumperOverlayHelper.currentState = "Collecting 10 spades..";
+
+        while (Inventory.getCount("Spade") != 10) {
+            TileItem spade = TileItems.getNearest("Spade");
+            if (spade == null) {
+                continue;
+            }
+
+            if (!Reachable.isInteractable(spade.getTile())) {
+                Movement.walkTo(spade.getTile().getWorldLocation());
+
+                Time.sleepUntil(() -> Reachable.isInteractable(spade.getTile()), local::isMoving, 100, 9000);
+            }
+
+            spade.pickup();
+            waitUntilArrivedAt(spade);
+
+            if (Inventory.getCount("Spade") == 10) {
+                return;
+            }
+
+            Time.sleep(60000);
+        }
+    }
+
+    private void fillSpades(Player local) {
+        AutoPumperOverlayHelper.currentState = "Filling spades..";
+
+        TileObject coke = TileObjects.getNearest("Coke");
+        if (coke == null) {
+            return;
+        }
+
+        while (Inventory.getCount("Spade") != 0) {
+            coke.interact("Collect");
+            waitUntilArrivedAt(coke);
+
+            Time.sleepTick();
+            Time.sleep(32, 89);
+        }
+    }
+
     private void operatePump(Player player) {
+        AutoPumperOverlayHelper.currentState = "Pumping..";
+
         TileObject pump = TileObjects.getNearest(b -> b.hasAction("Operate"));
         if (pump == null) {
             return;
@@ -148,15 +276,27 @@ public class AutoPumper extends Plugin {
         Time.sleepUntil(() -> player.getAnimation() == BLAST_FURNACE_PUMPING, () -> player.getAnimation() == IDLE, 100, 1000);
     }
 
-    private void locatePump(TileObject pump) {
-        pump.interact("Operate");
-
-        waitUntiArrivedAtPump(pump);
+    private void waitUntilArrivedAt(TileObject tileObject) {
+        List<WorldPoint> interactableTiles = Reachable.getInteractable(tileObject);
+        Time.sleepUntil(() -> interactableTiles.contains(Players.getLocal().getWorldLocation()), () -> Players.getLocal().isMoving(), 100, 4000);
     }
 
-    private void waitUntiArrivedAtPump(TileObject pump) {
-        List<WorldPoint> interactableTiles = Reachable.getInteractable(pump);
+    private void waitUntilArrivedAt(TileItem tileItem) {
+        List<WorldPoint> interactableTiles = Reachable.getInteractable(tileItem);
+        Time.sleepUntil(() -> interactableTiles.contains(Players.getLocal().getWorldLocation()), () -> Players.getLocal().isMoving(), 100, 4000);
+    }
 
-        Time.sleepUntil(() -> interactableTiles.contains(Players.getLocal().getWorldLocation()), () -> Players.getLocal().isMoving(), 100, 10000);
+    private void locatePump(TileObject pump) {
+        AutoPumperOverlayHelper.currentState = "Locating pump..";
+
+        pump.interact("Operate");
+        waitUntilArrivedAt(pump);
+    }
+
+    @Override
+    protected void shutDown() throws Exception {
+        isEnabled = false;
+
+        super.shutDown();
     }
 }
