@@ -1,4 +1,4 @@
-version = "0.0.2"
+version = "0.0.3"
 
 project.extra["PluginName"] = "Auto Pumper"
 project.extra["PluginDescription"] = "Automates the Blast Furnace Pump"
