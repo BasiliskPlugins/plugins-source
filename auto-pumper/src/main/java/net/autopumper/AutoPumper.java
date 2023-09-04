@@ -53,10 +53,16 @@ public class AutoPumper extends Plugin {
     private Instant lastAnimating = Instant.now();
     private int lastAnimation = 0;
 
-    private Instant lastInteracting;
     private Actor lastInteract;
 
     private boolean isEnabled;
+
+    private int xpCounter;
+    private int previousXp;
+
+    private boolean inProgress;
+    private AutoPumperState state;
+
 
     private final ExecutorService executor = Executors.newFixedThreadPool(1);
 
@@ -76,6 +82,27 @@ public class AutoPumper extends Plugin {
             }
 
             super.startUp();
+
+            Player local = client.getLocalPlayer();
+            if (isIdling(local)) {
+                if (autoPumperConfig.soloPump()) {
+                    executor.submit(() -> {
+                        inProgress = true;
+                        refuel(local);
+                        Time.sleep(32, 98);
+
+                        operatePump(local);
+
+                        inProgress = false;
+                    });
+                } else {
+                    inProgress = true;
+
+                    executor.submit(() -> operatePump(local));
+
+                    inProgress = false;
+                }
+            }
         }
     }
 
@@ -120,28 +147,43 @@ public class AutoPumper extends Plugin {
             return;
         }
 
-        if (isPumping(local)) {
-            return;
-        }
+        if (!inProgress) {
 
-        if (isIdling(local)) {
-            AutoPumperOverlayHelper.currentState = "Idling..";
+            if (state == AutoPumperState.PUMPING) {
+                if (previousXp == client.getSkillExperience(Skill.STRENGTH)) {
+                    xpCounter++;
 
-            if (autoPumperConfig.soloPump()) {
+                    if (xpCounter >= 5) {
+                        state = AutoPumperState.FILLING_COKE;
+
+                        xpCounter = 0;
+                    }
+                }
+
+                previousXp = client.getSkillExperience(Skill.STRENGTH);
+            }
+
+            if (state == AutoPumperState.FILLING_COKE && autoPumperConfig.soloPump()) {
                 executor.submit(() -> {
+                    inProgress = true;
+
                     refuel(local);
                     Time.sleep(32, 98);
 
                     operatePump(local);
+
+                    inProgress = false;
                 });
-            } else {
+            }
+
+            if (!autoPumperConfig.soloPump()) {
+                inProgress = true;
+
                 executor.submit(() -> operatePump(local));
+
+                inProgress = false;
             }
         }
-    }
-
-    private boolean isPumping(Player player) {
-        return player.getAnimation() == BLAST_FURNACE_PUMPING;
     }
 
     private boolean isIdling(Player local) {
@@ -156,7 +198,6 @@ public class AutoPumper extends Plugin {
                 lastAnimating = null;
 
                 lastInteract = null;
-                lastInteracting = null;
 
                 return true;
             }
@@ -174,7 +215,6 @@ public class AutoPumper extends Plugin {
             lastAnimation = IDLE;
         }
 
-        lastInteracting = null;
         if (client.getGameState() == GameState.LOGIN_SCREEN || local == null || local.getInteracting() != lastInteract) {
             lastInteract = null;
         }
@@ -183,11 +223,10 @@ public class AutoPumper extends Plugin {
     private void refuel(Player local) {
         if (Inventory.getCount("Spade") < 10) {
             collectSpades(local);
-        } else {
             fillSpades(local);
-        }
 
-        if (Inventory.getCount("Spade") == 10) {
+            return;
+        } else {
             fillSpades(local);
         }
 
@@ -199,16 +238,19 @@ public class AutoPumper extends Plugin {
     private void refuelStove() {
         AutoPumperOverlayHelper.currentState = "Refuelling.";
 
-        TileObject stove = TileObjects.getNearest("Stove");
-        if (stove == null) {
-            return;
-        }
-
         while (Inventory.getCount("Spade") != 10 && isEnabled) {
-            stove.interact("Refuel");
-            waitUntilArrivedAt(stove);
+            TileObject stove = TileObjects.getNearest("Stove");
+            if (stove == null) {
+                return;
+            }
 
-            Time.sleepTick();
+            boolean standingNextToStove = Reachable.getInteractable(stove).contains(Players.getLocal().getWorldLocation());
+
+            stove.interact("Refuel");
+            if (!standingNextToStove) {
+                waitUntilArrivedAt(stove);
+            }
+
             Time.sleep(21, 112);
         }
     }
@@ -251,46 +293,66 @@ public class AutoPumper extends Plugin {
             coke.interact("Collect");
             waitUntilArrivedAt(coke);
 
-            Time.sleepTick();
             Time.sleep(32, 89);
         }
     }
 
     private void operatePump(Player player) {
-        AutoPumperOverlayHelper.currentState = "Pumping..";
-
-        TileObject pump = TileObjects.getNearest(b -> b.hasAction("Operate"));
+        TileObject pump = TileObjects.getNearest(9090);
         if (pump == null) {
             return;
         }
 
         boolean standingNextToPump = Reachable.getInteractable(pump).contains(Players.getLocal().getWorldLocation());
         if (!standingNextToPump) {
-            locatePump(pump);
+            locatePump();
 
             return;
         }
 
-        pump.interact("Operate");
+        int prevXp = client.getSkillExperience(Skill.STRENGTH);
 
-        Time.sleepUntil(() -> player.getAnimation() == BLAST_FURNACE_PUMPING, () -> player.getAnimation() == IDLE, 100, 1000);
+        pump.interact(0);
+
+        Time.sleepUntil(() -> player.getAnimation() == BLAST_FURNACE_PUMPING, () -> player.getAnimation() == IDLE, 100, 7000);
+        Time.sleepUntil(() -> client.getSkillExperience(Skill.STRENGTH) > prevXp, 5000);
+
+        previousXp = prevXp;
+
+        AutoPumperOverlayHelper.currentState = "Pumping..";
+        state = AutoPumperState.PUMPING;
     }
 
     private void waitUntilArrivedAt(TileObject tileObject) {
         List<WorldPoint> interactableTiles = Reachable.getInteractable(tileObject);
-        Time.sleepUntil(() -> interactableTiles.contains(Players.getLocal().getWorldLocation()), () -> Players.getLocal().isMoving(), 100, 4000);
+        Time.sleepUntil(() -> interactableTiles.contains(Players.getLocal().getWorldLocation()), () -> Players.getLocal().isMoving(), 100, 7000);
     }
 
     private void waitUntilArrivedAt(TileItem tileItem) {
         List<WorldPoint> interactableTiles = Reachable.getInteractable(tileItem);
-        Time.sleepUntil(() -> interactableTiles.contains(Players.getLocal().getWorldLocation()), () -> Players.getLocal().isMoving(), 100, 4000);
+        Time.sleepUntil(() -> interactableTiles.contains(Players.getLocal().getWorldLocation()), () -> Players.getLocal().isMoving(), 100, 7000);
     }
 
-    private void locatePump(TileObject pump) {
+    private void locatePump() {
         AutoPumperOverlayHelper.currentState = "Locating pump..";
+
+        Time.sleepTick();
+
+        TileObject pump = TileObjects.getNearest("Pump");
+        if (pump == null) {
+            return;
+        }
+
+        int prevXp = client.getSkillExperience(Skill.STRENGTH);
 
         pump.interact("Operate");
         waitUntilArrivedAt(pump);
+        Time.sleepUntil(() -> client.getSkillExperience(Skill.STRENGTH) > prevXp, 5000);
+
+        previousXp = prevXp;
+
+        AutoPumperOverlayHelper.currentState = "Pumping..";
+        state = AutoPumperState.PUMPING;
     }
 
     @Override
